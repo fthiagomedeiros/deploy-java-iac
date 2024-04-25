@@ -1,0 +1,65 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploys a Docker container registry and ECS Cluster.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - sit
+      - prod
+  RegistryConfigName:
+    Type: String
+    Default: config-repository
+    Description: The name of the container registry
+
+Conditions:
+  CreateProdResources: !Equals
+    - !Ref Environment
+    - prod
+
+Resources:
+
+  ConfigRepository:
+    UpdateReplacePolicy: !If [ CreateProdResources, Retain, Delete ]
+    DeletionPolicy: !If [ CreateProdResources, Retain, Delete ]
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Join [ '-', [ !Ref RegistryConfigName, !Ref Environment ] ]
+      RepositoryPolicyText:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowPushPull
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:user/thiago'
+            Action:
+              - "ecr:GetDownloadUrlForLayer"
+              - "ecr:BatchGetImage"
+              - "ecr:BatchCheckLayerAvailability"
+              - "ecr:PutImage"
+              - "ecr:InitiateLayerUpload"
+              - "ecr:UploadLayerPart"
+              - "ecr:CompleteLayerUpload"
+
+  ECSCluster:
+    UpdateReplacePolicy: !If [ CreateProdResources, Retain, Delete ]
+    DeletionPolicy: !If [ CreateProdResources, Retain, Delete ]
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${RegistryConfigName}-${Environment}'
+
+
+Outputs:
+  ClusterName:
+    Description: The name of the ECS cluster
+    Value: !Ref 'ECSCluster'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'ClusterName', !Ref Environment ] ]
+  RepositoryName:
+    Description: The name of the ECR config repository
+    Value: !Ref 'ConfigRepository'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'config', !Ref Environment ] ]

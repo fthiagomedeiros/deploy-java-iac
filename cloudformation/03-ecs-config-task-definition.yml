@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: The template used to create an ECS Service from the ECS Console.
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - sit
+      - prod
+  NetworkStackName:
+    Type: String
+    Default: network-stack
+    Description: The name of the networking stack that
+      these resources are put into.
+  ServiceName:
+    Type: String
+    Default: config-svc-run
+    Description: A human-readable name for the service.
+  ImageUrl:
+    Type: String
+    Description: The url of a docker image that will handle incoming traffic.
+  ContainerPort:
+    Type: Number
+    Default: 8761
+    Description: The port number the application inside the docker container is binding to.
+  ContainerCpu:
+    Type: Number
+    Default: 256
+    Description: How much CPU to give the container. 1024 is 1 CPU.
+  ContainerMemory:
+    Type: Number
+    Default: 512
+    Description: How much memory in megabytes to give the container.
+
+
+Resources:
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ServiceName}-${Environment}'
+      Cpu: !Ref 'ContainerCpu'
+      Memory: !Ref 'ContainerMemory'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn:
+        Fn::ImportValue:
+          !Sub '${NetworkStackName}:ECSTaskExecutionRole'
+      TaskRoleArn:
+        Fn::ImportValue: !Sub '${NetworkStackName}:ECSRole'
+      ContainerDefinitions:
+        - Name: !Ref 'ServiceName'
+          Cpu: !Ref 'ContainerCpu'
+          Memory: !Ref 'ContainerMemory'
+          Image: !Ref 'ImageUrl'
+          PortMappings:
+            - ContainerPort: !Ref 'ContainerPort'
+              HostPort: !Ref 'ContainerPort'
+              AppProtocol: http
+              Protocol: tcp
+              Name: 8761
+          LogConfiguration:
+            LogDriver: 'awslogs'
+            Options:
+              awslogs-group: !Ref 'ServiceName'
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: !Ref 'ServiceName'
+              awslogs-create-group: true
+          Environment:
+            - Name: 'SPRING_PROFILES_ACTIVE'
+              Value: 'docker'
+            - Name: 'EUREKA_SERVER_EIP'
+              Value: 'localhost'
+
+Outputs:
+  TaskDefinition:
+    Description: The task definition
+    Value: !Ref TaskDefinition
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'TaskDefinitionConfig', !Ref Environment ] ]
+  ImageUrl:
+    Description: Image URL
+    Value: !Ref ImageUrl
